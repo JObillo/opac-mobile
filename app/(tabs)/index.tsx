@@ -1,98 +1,238 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Picker } from "@react-native-picker/picker";
+import { useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Keyboard,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+} from "react-native";
+import api from "../../api/api";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+type Book = {
+  id: number;
+  title: string;
+  author: string;
+  isbn: string;
+  status: string;
+  book_cover?: string;
+};
 
-export default function HomeScreen() {
+type Section = {
+  id: number;
+  section_name: string;
+  books: Book[];
+};
+
+export default function LandingPage() {
+  const [sections, setSections] = useState<Section[]>([]);
+  const [filteredSections, setFilteredSections] = useState<Section[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchText, setSearchText] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "title" | "author" | "isbn">("all");
+
+  const router = useRouter();
+  const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    api
+      .get("/sections")
+      .then((res) => {
+        setSections(res.data);
+        setFilteredSections(res.data);
+      })
+      .catch((err) => console.error("Axios error:", err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Filter books based on search
+  useEffect(() => {
+    if (!searchText) {
+      setFilteredSections(sections);
+      return;
+    }
+
+    const newSections = sections
+      .map((section) => ({
+        ...section,
+        books: section.books.filter((book) => {
+          const q = searchText.toLowerCase().trim();
+          if (filterType === "all") {
+            return (
+              book.title.toLowerCase().includes(q) ||
+              book.author.toLowerCase().includes(q) ||
+              (book.isbn?.toLowerCase().includes(q) ?? false)
+            );
+          } else {
+            return book[filterType]?.toLowerCase().includes(q);
+          }
+        }),
+      }))
+      .filter((section) => section.books.length > 0);
+
+    setFilteredSections(newSections);
+  }, [searchText, filterType, sections]);
+
+  if (loading) return <ActivityIndicator size="large" style={{ flex: 1 }} />;
+
+  const hasBooks = filteredSections.some(section => section.books.length > 0);
+
+  const dismissSearch = () => {
+    Keyboard.dismiss();
+    setSearchText("");
+    setFilteredSections(sections);
+    inputRef.current?.blur();
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <TouchableWithoutFeedback onPress={dismissSearch}>
+      <View style={{ flex: 1 }}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Image
+            source={{ uri: "http://192.168.0.103:8000/philcstlogo.png" }}
+            style={styles.logo}
+          />
+          <Text style={styles.libraryName}>Philcst Library</Text>
+        </View>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <TextInput
+            ref={inputRef}
+            style={styles.searchInput}
+            placeholder={
+              filterType === "all"
+                ? "Search books..."
+                : `Search books by ${filterType}`
+            }
+            value={searchText}
+            onChangeText={setSearchText}
+          />
+          <Picker
+            selectedValue={filterType}
+            style={styles.picker}
+            onValueChange={(value) => setFilterType(value)}
+          >
+            <Picker.Item label="All" value="all" />
+            <Picker.Item label="Title" value="title" />
+            <Picker.Item label="Author" value="author" />
+            <Picker.Item label="ISBN" value="isbn" />
+          </Picker>
+        </View>
+
+        {hasBooks ? (
+          <FlatList
+            data={filteredSections}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={({ item }) => (
+              <View style={styles.sectionContainer}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>{item.section_name}</Text>
+                  <TouchableOpacity onPress={() => router.push(`/section/${item.id}`)}>
+                    <Text style={styles.seeAllText}>See All</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <FlatList
+                  data={item.books.slice(0, 3)} // show 3 books
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  keyExtractor={(book) => book.id.toString()}
+                  renderItem={({ item: book }) => (
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: '/book/[id]',
+                          params: { id: book.id.toString() },
+                        })
+                      }
+                    >
+                      <View style={styles.bookCard}>
+                        <Image
+                          source={{
+                            uri: book.book_cover
+                              ? book.book_cover.startsWith("http")
+                                ? book.book_cover
+                                : `http://192.168.0.103:8000${book.book_cover}`
+                              : "https://via.placeholder.com/120x160.png?text=No+Cover",
+                          }}
+                          style={styles.bookCover}
+                        />
+                        <View style={styles.bookInfo}>
+                          <Text numberOfLines={1} style={styles.bookTitle}>
+                            {book.title}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.status,
+                              { color: book.status === "Available" ? "green" : "red" },
+                            ]}
+                          >
+                            {book.status}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            )}
+          />
+        ) : (
+          <View style={{ flex: 1, justifyContent: "flex-start", alignItems: "center", marginTop: 80 }}>
+            <Text style={{ fontSize: 16, color: "#666" }}>No books found.</Text>
+          </View>
+        )}
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: "#fff",
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  logo: { width: 40, height: 40, borderRadius: 8, marginTop: 30 },
+  libraryName: { color: "#774e94ff", fontSize: 20, fontWeight: "bold", marginLeft: 12, marginTop: 30 },
+
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  searchInput: {
+    flex: 1,
+    height: 40,
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ccc",
   },
+  picker: {
+    width: 120,
+    marginLeft: 8,
+  },
+
+  sectionContainer: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#ccc" },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  sectionTitle: { fontWeight: "bold", fontSize: 18, marginLeft: 12 },
+  seeAllText: { color: "#007bff", fontWeight: "bold", marginRight: 12 },
+
+  bookCard: { width: 120, marginRight: 12, marginLeft: 12 },
+  bookCover: { width: 120, height: 160, borderRadius: 8, marginBottom: 6 },
+  
+  bookInfo: { marginTop: 4 },
+  bookTitle: { fontSize: 15, fontWeight: "bold", marginBottom: 4 },
+  status: { fontWeight: "500" },
 });
