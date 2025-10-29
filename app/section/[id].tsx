@@ -3,16 +3,16 @@ import { Picker } from "@react-native-picker/picker";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Image,
-    Keyboard,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Keyboard,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
 } from "react-native";
 import api from "../../api/api";
 
@@ -172,7 +172,7 @@ export default function SectionPage() {
                       uri: item.book_cover
                         ? item.book_cover.startsWith("http")
                           ? item.book_cover
-                          : `http://192.168.0.103:8000${item.book_cover}`
+                          : `http://192.168.0.104:8000${item.book_cover}`
                         : "https://via.placeholder.com/140x180.png?text=No+Cover",
                     }}
                     style={styles.bookCover}

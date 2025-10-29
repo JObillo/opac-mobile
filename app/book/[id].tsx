@@ -2,13 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import api from "../../api/api";
 
@@ -25,7 +25,6 @@ type Book = {
   published_year?: string;
   section?: { id: number; section_name: string };
   dewey?: string;
-  description?: string;
   book_cover?: string;
   status?: string;
 };
@@ -67,7 +66,7 @@ export default function BookDetails() {
             uri: book.book_cover
                 ? book.book_cover.startsWith("http")
                 ? book.book_cover
-                : `http://192.168.0.103:8000${book.book_cover}`
+                : `http://192.168.0.104:8000${book.book_cover}`
                 : "https://via.placeholder.com/200x300.png?text=No+Cover",
             }}
             style={styles.bookCover}
@@ -103,12 +102,6 @@ export default function BookDetails() {
           {book.section && <Text style={styles.infoText}>Section: {book.section.section_name}</Text>}
           {book.dewey && <Text style={styles.infoText}>Dewey: {book.dewey}</Text>}
 
-          {book.description && (
-            <>
-              <Text style={[styles.infoTitle, { marginTop: 20 }]}>Description</Text>
-              <Text style={styles.infoText}>{book.description}</Text>
-            </>
-          )}
         </View>
       </ScrollView>
     </>
