@@ -108,7 +108,7 @@ export default function LandingPage() {
             style={styles.adminButton}
             onPress={() => router.push("/admin/login" as never)}
           >
-            <Text style={styles.adminButtonText}>Login</Text>
+            <Text style={styles.adminButtonText}>login</Text>
           </TouchableOpacity>
         </View>
 
