@@ -1,29 +1,54 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
 import * as ImagePicker from "expo-image-picker";
 import { Stack, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Image,
-  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
+
+type Section = { id: string; section_name: string };
+type Dewey = { id: string; dewey_number: string; dewey_classification: string };
+
+// Format ISBN as 111-1-11111-111-1
+const formatISBN = (value: string) => {
+  const digits = value.replace(/\D/g, "").slice(0, 13);
+  let formatted = "";
+  if (digits.length > 0) formatted += digits.slice(0, 3);
+  if (digits.length > 3) formatted += "-" + digits[3];
+  if (digits.length > 4) formatted += "-" + digits.slice(4, 9);
+  if (digits.length > 9) formatted += "-" + digits.slice(9, 12);
+  if (digits.length > 12) formatted += "-" + digits[12];
+  return formatted;
+};
 
 export default function AddBook() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [deweys, setDeweys] = useState<Dewey[]>([]);
+  const [token, setToken] = useState<string>("");
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const inputRefs = useRef<Array<TextInput | null>>([]);
+
   const [form, setForm] = useState({
     isbn: "",
     title: "",
     author: "",
     publisher: "",
     book_copies: "",
-    accession_number: "",
+    accession_numbers: [] as string[],
     call_number: "",
     year: "",
     publication_place: "",
@@ -36,13 +61,56 @@ export default function AddBook() {
     book_cover: "",
   });
 
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const loadData = async () => {
+      const t = await AsyncStorage.getItem("token");
+      if (t) setToken(t);
+
+      fetch("http://192.168.0.104:8000/api/sections")
+        .then(res => res.json())
+        .then(setSections)
+        .catch(() => Alert.alert("Error", "Failed to load sections"));
+
+      fetch("http://192.168.0.104:8000/api/deweys")
+        .then(res => res.json())
+        .then(setDeweys)
+        .catch(() => Alert.alert("Error", "Failed to load deweys"));
+    };
+    loadData();
+  }, []);
+
   const handleChange = (key: string, value: string) => {
-    setForm({ ...form, [key]: value });
+    if (key === "isbn") value = formatISBN(value.replace(/\D/g, ""));
+    if (["book_copies", "book_price", "year"].includes(key)) value = value.replace(/\D/g, "");
+    if (key === "year") value = value.slice(0, 4);
+
+    setForm(prev => ({ ...prev, [key]: value }));
+
+    if (errors[key]) setErrors(prev => ({ ...prev, [key]: "" }));
   };
 
-  // 📸 Camera + Gallery Picker
+  const handleAccessionChange = (index: number, value: string) => {
+    const updated = [...form.accession_numbers];
+    updated[index] = value;
+    setForm(prev => ({ ...prev, accession_numbers: updated }));
+    if (errors[`accession_${index}`]) setErrors(prev => ({ ...prev, [`accession_${index}`]: "" }));
+  };
+
+  const handleAddAccession = () => setForm(prev => ({ ...prev, accession_numbers: [...prev.accession_numbers, ""] }));
+  const handleRemoveAccession = (index: number) => {
+    const updated = [...form.accession_numbers];
+    updated.splice(index, 1);
+    setForm(prev => ({ ...prev, accession_numbers: updated }));
+    // Remove associated error
+    const updatedErrors = { ...errors };
+    delete updatedErrors[`accession_${index}`];
+    setErrors(updatedErrors);
+  };
+
   const handleImageOption = async () => {
-    Alert.alert("Select Book Cover", "Choose a method to add a book cover", [
+    Alert.alert("Select Book Cover", "Choose a method", [
       { text: "Take Photo", onPress: takePhoto },
       { text: "Choose from Gallery", onPress: pickImage },
       { text: "Cancel", style: "cancel" },
@@ -50,214 +118,215 @@ export default function AddBook() {
   };
 
   const takePhoto = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permission required", "Camera access is needed to take a photo.");
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [3, 4],
-      quality: 1,
-    });
-    if (!result.canceled) setForm({ ...form, book_cover: result.assets[0].uri });
+    const { granted } = await ImagePicker.requestCameraPermissionsAsync();
+    if (!granted) return Alert.alert("Permission needed", "Camera access required.");
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [3, 4], quality: 1 });
+    if (!result.canceled) setForm(prev => ({ ...prev, book_cover: result.assets[0].uri }));
   };
 
   const pickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permission required", "Gallery access is needed to select an image.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      allowsEditing: true,
-      aspect: [3, 4],
-      quality: 1,
-    });
-    if (!result.canceled) setForm({ ...form, book_cover: result.assets[0].uri });
+    const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!granted) return Alert.alert("Permission needed", "Gallery access required.");
+    const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, aspect: [3, 4], quality: 1 });
+    if (!result.canceled) setForm(prev => ({ ...prev, book_cover: result.assets[0].uri }));
   };
 
-  // 🔍 Fetch Book Info via ISBN
-  const fetchBookInfo = async () => {
-    if (!form.isbn.trim()) {
-      Alert.alert("Missing ISBN", "Please enter an ISBN first.");
-      return;
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) setForm(prev => ({ ...prev, date_purchase: selectedDate.toISOString().split("T")[0] }));
+    if (errors.date_purchase) setErrors(prev => ({ ...prev, date_purchase: "" }));
+  };
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!form.title) newErrors.title = "Title is required.";
+    if (!form.author) newErrors.author = "Author is required.";
+    if (!form.isbn) newErrors.isbn = "ISBN is required.";
+    else if (form.isbn.replace(/\D/g, "").length !== 13) newErrors.isbn = "ISBN must be 13 digits.";
+    if (!form.date_purchase) newErrors.date_purchase = "Select a date.";
+    if (!form.section_id) newErrors.section_id = "Select a section.";
+    if (!form.dewey_id) newErrors.dewey_id = "Select a Dewey.";
+    if (form.accession_numbers.length === 0) newErrors.accession_numbers = "Add at least 1 accession number.";
+
+    const seen: Record<string, number> = {};
+    form.accession_numbers.forEach((num, idx) => {
+      if (!num.trim()) newErrors[`accession_${idx}`] = "Cannot be empty.";
+      else if (seen[num]) newErrors[`accession_${idx}`] = "Duplicate accession number.";
+      else seen[num] = 1;
+    });
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async () => {
+    if (!token) return Alert.alert("Error", "You must be logged in to add a book.");
+    if (!validateForm()) return;
+
+    const data = new FormData();
+    Object.keys(form).forEach(key => {
+      const value = form[key as keyof typeof form];
+      if (key === "accession_numbers") form.accession_numbers.forEach(num => data.append("accession_numbers[]", num));
+      else if (key === "book_copies") data.append("book_copies", Number(value).toString());
+      else data.append(key, value as string);
+    });
+
+    if (form.book_cover) {
+      const uri = form.book_cover.startsWith("file://") ? form.book_cover : "file://" + form.book_cover;
+      const filename = uri.split("/").pop() || "cover.jpg";
+      data.append("book_cover", { uri, name: filename, type: "image/jpeg" } as any);
     }
 
     try {
       setLoading(true);
-      const res = await fetch(
-        `https://openlibrary.org/api/books?bibkeys=ISBN:${form.isbn}&format=json&jscmd=data`
-      );
-      const data = await res.json();
-      const bookKey = `ISBN:${form.isbn}`;
-      const book = data[bookKey];
+      const res = await fetch("http://192.168.0.104:8000/api/books", {
+        method: "POST",
+        body: data,
+        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+      });
 
-      if (book) {
-        setForm({
-          ...form,
-          title: book.title || form.title,
-          author: book.authors?.[0]?.name || form.author,
-          publisher: book.publishers?.[0]?.name || form.publisher,
-          year: book.publish_date || form.year,
-          book_cover: book.cover?.medium || form.book_cover,
-        });
-        Alert.alert("Book Info Loaded", "Book details have been autofilled.");
-      } else {
-        Alert.alert("Not Found", "No book data found for this ISBN.");
-      }
-    } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "Failed to fetch book data.");
+      const contentType = res.headers.get("content-type") || "";
+      let json = {};
+      if (contentType.includes("application/json")) json = await res.json();
+      else return Alert.alert("Error", "Server returned non-JSON response. Check Laravel logs.");
+
+      if (!res.ok) return Alert.alert("Error", JSON.stringify(json));
+      Alert.alert("Success", "Book added successfully!");
+      router.replace("/admin/homepage");
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubmit = () => {
-    Alert.alert("Book Added", "This will later send data to your API.");
-    router.back();
-  };
+  const formKeys: (keyof typeof form)[] = [
+    "isbn",
+    "title",
+    "author",
+    "publisher",
+    "book_copies",
+    "call_number",
+    "year",
+    "publication_place",
+    "subject",
+    "book_price",
+    "other_info",
+  ];
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerStyle: { backgroundColor: "#fff" },
-          headerLeft: () => (
-            <Image
-              source={{ uri: "http://192.168.0.104:8000/philcstlogo.png" }}
-              style={{ width: 40, height: 40, borderRadius: 8, marginLeft: 15 }}
-            />
-          ),
-          headerTitle: "",
-          headerRight: () => (
-            <Text
-              style={{
-                color: "#774e94ff",
-                fontWeight: "bold",
-                fontSize: 18,
-                marginRight: 15,
-              }}
-            >
-              Add New Book
-            </Text>
-          ),
-        }}
-      />
-
-      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 60 }}>
-        {/* 📸 Book Cover */}
-        <TouchableOpacity onPress={handleImageOption} style={styles.imagePicker}>
-          {form.book_cover ? (
-            <Image source={{ uri: form.book_cover }} style={styles.imagePreview} />
-          ) : (
-            <Text style={{ color: "#774e94ff", textAlign: "center" }}>Select Book Cover</Text>
-          )}
-        </TouchableOpacity>
-
-        {/* 🔢 ISBN + Fetch Button */}
-        <View style={styles.row}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>ISBN</Text>
-            <TextInput
-              style={styles.input}
-              value={form.isbn}
-              onChangeText={(value) => handleChange("isbn", value)}
-              placeholder="Enter ISBN"
-              keyboardType="numeric"
-            />
-          </View>
-
-          <TouchableOpacity style={styles.fetchButton} onPress={fetchBookInfo}>
-            {loading ? (
-              <ActivityIndicator color="#fff" />
+      <Stack.Screen options={{ headerTitle: "Add New Book" }} />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}>
+        <KeyboardAwareScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} enableOnAndroid={true}>
+          <TouchableOpacity onPress={handleImageOption} style={styles.imagePicker}>
+            {form.book_cover ? (
+              <Image source={{ uri: form.book_cover }} style={styles.imagePreview} />
             ) : (
-              <Text style={styles.fetchText}>Fetch</Text>
+              <Text style={{ color: "#774e94ff", textAlign: "center" }}>Select Book Cover</Text>
             )}
           </TouchableOpacity>
-        </View>
 
-        {/* 🧾 Other fields */}
-        {[
-          { key: "title", label: "Title" },
-          { key: "author", label: "Author" },
-          { key: "publisher", label: "Publisher" },
-          { key: "book_copies", label: "Book Copies", keyboardType: "numeric" },
-          { key: "accession_number", label: "Accession Number" },
-          { key: "call_number", label: "Call Number" },
-          { key: "year", label: "Year", keyboardType: "numeric" },
-          { key: "publication_place", label: "Publication Place" },
-          { key: "subject", label: "Subject" },
-          { key: "book_price", label: "Book Price", keyboardType: "numeric" },
-          { key: "other_info", label: "Other Info" },
-        ].map(({ key, label, keyboardType }) => (
-          <View key={key} style={{ marginBottom: 12 }}>
-            <Text style={styles.label}>{label}</Text>
-            <TextInput
-              style={styles.input}
-              value={form[key as keyof typeof form]}
-              onChangeText={(value) => handleChange(key, value)}
-              placeholder={`Enter ${label}`}
-              keyboardType={keyboardType as any}
-            />
+          {formKeys.map((key, index) => (
+            <View key={key} style={{ marginBottom: 12 }}>
+              <Text style={styles.label}>{key.replace("_", " ").toUpperCase()}</Text>
+              <TextInput
+                ref={el => { inputRefs.current[index] = el; }}
+                style={styles.input}
+                value={form[key] as string}
+                onChangeText={v => handleChange(key, v)}
+                keyboardType={["isbn", "book_copies", "book_price", "year"].includes(key) ? "numeric" : "default"}
+                maxLength={key === "year" ? 4 : undefined}
+                placeholder={key === "isbn" ? "111-1-11111-111-1" : undefined}
+                returnKeyType={index === formKeys.length - 1 ? "done" : "next"}
+                onSubmitEditing={() => {
+                  if (index < inputRefs.current.length - 1) inputRefs.current[index + 1]?.focus();
+                }}
+              />
+              {errors[key] ? <Text style={styles.errorText}>{errors[key]}</Text> : null}
+            </View>
+          ))}
+
+          <View style={{ marginBottom: 12 }}>
+            <Text style={styles.label}>Date of Purchase</Text>
+            <TouchableOpacity style={styles.input} onPress={() => setShowDatePicker(true)}>
+              <Text>{form.date_purchase || "Select date"}</Text>
+            </TouchableOpacity>
+            {errors.date_purchase ? <Text style={styles.errorText}>{errors.date_purchase}</Text> : null}
+            {showDatePicker && (
+              <DateTimePicker
+                value={form.date_purchase ? new Date(form.date_purchase) : new Date()}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={handleDateChange}
+              />
+            )}
           </View>
-        ))}
 
-        {/* Section Dropdown */}
-        <View style={{ marginBottom: 12 }}>
-          <Text style={styles.label}>Section</Text>
-          <Picker
-            selectedValue={form.section_id}
-            style={styles.input}
-            onValueChange={(value) => handleChange("section_id", value)}
-          >
-            <Picker.Item label="Select Section" value="" />
-            <Picker.Item label="Fiction" value="1" />
-            <Picker.Item label="Science" value="2" />
-            <Picker.Item label="History" value="3" />
-          </Picker>
-        </View>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={styles.label}>Section</Text>
+            <Picker
+              selectedValue={form.section_id}
+              style={styles.input}
+              onValueChange={v => { handleChange("section_id", v); if (errors.section_id) setErrors(prev => ({ ...prev, section_id: "" })); }}
+            >
+              <Picker.Item label="Select Section" value="" />
+              {sections.map(s => (
+                <Picker.Item key={s.id} label={s.section_name} value={s.id} />
+              ))}
+            </Picker>
+            {errors.section_id ? <Text style={styles.errorText}>{errors.section_id}</Text> : null}
+          </View>
 
-        {/* Dewey Dropdown */}
-        <View style={{ marginBottom: 12 }}>
-          <Text style={styles.label}>Dewey</Text>
-          <Picker
-            selectedValue={form.dewey_id}
-            style={styles.input}
-            onValueChange={(value) => handleChange("dewey_id", value)}
-          >
-            <Picker.Item label="Select Dewey" value="" />
-            <Picker.Item label="000 – General Works" value="000" />
-            <Picker.Item label="100 – Philosophy" value="100" />
-            <Picker.Item label="200 – Religion" value="200" />
-          </Picker>
-        </View>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={styles.label}>Dewey</Text>
+            <Picker
+              selectedValue={form.dewey_id}
+              style={styles.input}
+              onValueChange={v => { handleChange("dewey_id", v); if (errors.dewey_id) setErrors(prev => ({ ...prev, dewey_id: "" })); }}
+            >
+              <Picker.Item label="Select Dewey" value="" />
+              {deweys.map(d => (
+                <Picker.Item key={d.id} label={`${d.dewey_number} – ${d.dewey_classification}`} value={d.id} />
+              ))}
+            </Picker>
+            {errors.dewey_id ? <Text style={styles.errorText}>{errors.dewey_id}</Text> : null}
+          </View>
 
-        {/* Date Purchase */}
-        <View style={{ marginBottom: 12 }}>
-          <Text style={styles.label}>Date Purchase</Text>
-          <TextInput
-            style={styles.input}
-            value={form.date_purchase}
-            onChangeText={(value) => handleChange("date_purchase", value)}
-            placeholder="YYYY-MM-DD"
-          />
-        </View>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={styles.label}>Accession Numbers</Text>
+            {form.accession_numbers.map((acc, i) => (
+              <View key={i} style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={acc}
+                  onChangeText={v => handleAccessionChange(i, v)}
+                  placeholder={`Accession #${i + 1}`}
+                />
+                <TouchableOpacity onPress={() => handleRemoveAccession(i)} style={{ marginLeft: 6 }}>
+                  <Text style={{ color: "red" }}>Remove</Text>
+                </TouchableOpacity>
+                {errors[`accession_${i}`] ? <Text style={styles.errorText}>{errors[`accession_${i}`]}</Text> : null}
+              </View>
+            ))}
+            {errors.accession_numbers ? <Text style={styles.errorText}>{errors.accession_numbers}</Text> : null}
+            <TouchableOpacity onPress={handleAddAccession}>
+              <Text style={{ color: "#774e94ff", fontWeight: "bold" }}>+ Add Accession</Text>
+            </TouchableOpacity>
+          </View>
 
-        <View style={{ marginTop: 20, marginBottom: 40 }}>
           <TouchableOpacity style={styles.button} onPress={handleSubmit}>
-            <Text style={styles.buttonText}>Save Book</Text>
+            <Text style={styles.buttonText}>{loading ? "Saving..." : "Save Book"}</Text>
           </TouchableOpacity>
-        </View>
-      </ScrollView>
+        </KeyboardAwareScrollView>
+      </KeyboardAvoidingView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#fff" },
-  row: { flexDirection: "row", alignItems: "flex-end", marginBottom: 12 },
+  container: { flex: 1, backgroundColor: "#fff" },
   label: { fontWeight: "600", marginBottom: 4, color: "#444" },
   input: {
     borderWidth: 1,
@@ -266,15 +335,6 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: "#fff",
   },
-  fetchButton: {
-    backgroundColor: "#774e94ff",
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    borderRadius: 8,
-    marginLeft: 10,
-    alignSelf: "flex-end",
-  },
-  fetchText: { color: "#fff", fontWeight: "bold" },
   imagePicker: {
     alignSelf: "center",
     alignItems: "center",
@@ -293,6 +353,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 10,
     alignItems: "center",
+    marginTop: 20,
   },
   buttonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  errorText: { color: "red", marginTop: 4 },
 });
