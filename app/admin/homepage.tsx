@@ -51,6 +51,7 @@ export default function AdminDashboard() {
       setFilteredSections(res.data);
     } catch (err: any) {
       console.error("Axios error:", err.message);
+      Alert.alert("Error", "Failed to fetch sections. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -123,17 +124,19 @@ export default function AdminDashboard() {
 
   return (
     <>
+      {/* Header */}
       <Stack.Screen
         options={{
           headerBackVisible: false,
           headerTitle: () => (
             <View style={styles.header}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Image
-                  source={{ uri: "http://192.168.0.104:8000/philcstlogo.png" }}
-                  style={styles.logo}
-                />
+              <Image
+                source={{ uri: "http://192.168.0.104:8000/philcstlogo.png" }}
+                style={styles.logo}
+              />
+              <View style={{ marginLeft: 10 }}>
                 <Text style={styles.libraryName}>Philcst Library</Text>
+                <Text style={styles.adminBadge}>ADMIN DASHBOARD</Text>
               </View>
             </View>
           ),
@@ -142,19 +145,22 @@ export default function AdminDashboard() {
               <Text style={styles.logoutText}>Logout</Text>
             </TouchableOpacity>
           ),
-          headerStyle: { backgroundColor: "#fff" },
+          headerStyle: { backgroundColor: "#f0e6fa" },
           headerShadowVisible: false,
           headerTitleAlign: "left",
         }}
       />
 
+      {/* Main Body */}
       <TouchableWithoutFeedback onPress={dismissSearch}>
         <View style={{ flex: 1, backgroundColor: "#f8f8f8" }}>
+
+          {/* Search & Filter */}
           <View style={styles.searchContainer}>
             <TextInput
               ref={inputRef}
               style={styles.searchInput}
-              placeholder={filterType === "all" ? "Search books..." : `Search books by ${filterType}`}
+              placeholder={filterType === "all" ? "Search books..." : `Search by ${filterType}`}
               value={searchText}
               onChangeText={setSearchText}
             />
@@ -170,6 +176,7 @@ export default function AdminDashboard() {
             </Picker>
           </View>
 
+          {/* Book Sections */}
           {hasBooks ? (
             <FlatList
               data={filteredSections}
@@ -209,7 +216,12 @@ export default function AdminDashboard() {
                             <Text numberOfLines={1} style={styles.bookTitle}>
                               {book.title}
                             </Text>
-                            <Text style={[styles.status, { color: book.status === "Available" ? "green" : "red" }]}>
+                            <Text
+                              style={[
+                                styles.status,
+                                { color: book.status === "Available" ? "green" : "red" },
+                              ]}
+                            >
                               {book.status}
                             </Text>
                           </View>
@@ -221,11 +233,12 @@ export default function AdminDashboard() {
               )}
             />
           ) : (
-            <View style={{ flex: 1, justifyContent: "flex-start", alignItems: "center", marginTop: 80 }}>
-              <Text style={{ fontSize: 16, color: "#666" }}>No books found.</Text>
+            <View style={styles.noBooksContainer}>
+              <Text style={styles.noBooksText}>No books found.</Text>
             </View>
           )}
 
+          {/* Bottom Admin Bar */}
           <View style={styles.bottomBar}>
             <TouchableOpacity style={styles.iconButton}>
               <Ionicons name="home" size={26} color="#774e94ff" />
@@ -245,12 +258,17 @@ export default function AdminDashboard() {
   );
 }
 
+// Styles
 const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center" },
   logo: { width: 35, height: 35, borderRadius: 8 },
-  libraryName: { color: "#774e94ff", fontSize: 20, fontWeight: "bold", marginLeft: 10 },
+  libraryName: { color: "#774e94ff", fontSize: 20, fontWeight: "bold" },
+  adminBadge: { fontSize: 12, color: "#774e94ff", fontWeight: "bold", textTransform: "uppercase" },
   logoutButton: { backgroundColor: "#774e94ff", paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, marginRight: 10 },
   logoutText: { color: "#fff", fontWeight: "bold", fontSize: 14 },
+  adminActions: { flexDirection: "row", justifyContent: "flex-start", marginVertical: 12, paddingLeft: 10 },
+  adminButton: { backgroundColor: "#774e94ff", padding: 12, borderRadius: 8, flexDirection: "row", alignItems: "center" },
+  adminButtonText: { color: "#fff", fontWeight: "bold", marginLeft: 6 },
   searchContainer: { flexDirection: "row", alignItems: "center", padding: 10 },
   searchInput: { flex: 1, height: 40, backgroundColor: "#fff", paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: "#ccc" },
   picker: { width: 120, marginLeft: 8 },
@@ -265,4 +283,6 @@ const styles = StyleSheet.create({
   status: { fontWeight: "500" },
   bottomBar: { flexDirection: "row", justifyContent: "space-around", alignItems: "center", height: 70, borderTopWidth: 1, borderTopColor: "#ddd", backgroundColor: "#fff" },
   iconButton: { flex: 1, alignItems: "center" },
+  noBooksContainer: { flex: 1, justifyContent: "flex-start", alignItems: "center", marginTop: 80 },
+  noBooksText: { fontSize: 16, color: "#666" },
 });

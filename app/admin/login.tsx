@@ -1,10 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -21,12 +21,19 @@ export default function AdminLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [secure, setSecure] = useState(true); // <--- password visibility
+  const [secure, setSecure] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
   const router = useRouter();
 
+  // Refs for inputs
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+
   const handleLogin = async () => {
+    setErrorMessage("");
+
     if (!email || !password) {
-      Alert.alert("Error", "Please enter both email and password.");
+      setErrorMessage("Please enter both email and password.");
       return;
     }
 
@@ -45,17 +52,17 @@ export default function AdminLogin() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result?.message || "Invalid credentials.");
+        setErrorMessage(result?.message || "Invalid email or password.");
+        return;
       }
 
-      // Save token for later authenticated requests
       await AsyncStorage.setItem("token", result.access_token);
-
-      Alert.alert("Success", "Login successful!");
       router.replace("/admin/homepage");
     } catch (error: any) {
       console.error("Login Error:", error);
-      Alert.alert("Login Failed", error.message || "Something went wrong.");
+      setErrorMessage(
+        "Network error. Please check your connection and try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -66,15 +73,27 @@ export default function AdminLogin() {
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <ScrollView
           contentContainerStyle={styles.scrollContainer}
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.container}>
+            {/* Logo */}
+            <Image
+              source={{ uri: "http://192.168.0.104:8000/philcstlogo.png" }}
+              style={styles.logo}
+            />
+
             <Text style={styles.title}>Admin Login</Text>
 
+            {errorMessage ? (
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            ) : null}
+
+            {/* Email Input */}
             <TextInput
+              ref={emailRef}
               style={styles.input}
               placeholder="Email"
               autoCapitalize="none"
@@ -82,16 +101,20 @@ export default function AdminLogin() {
               value={email}
               onChangeText={setEmail}
               returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()} // Move to password
             />
 
+            {/* Password Input */}
             <View style={styles.passwordWrapper}>
               <TextInput
+                ref={passwordRef}
                 style={[styles.input, { paddingRight: 44 }]}
                 placeholder="Password"
                 secureTextEntry={secure}
                 value={password}
                 onChangeText={setPassword}
                 returnKeyType="done"
+                onSubmitEditing={handleLogin} // Submit login on enter
               />
               <TouchableOpacity
                 style={styles.eyeButton}
@@ -125,54 +148,20 @@ export default function AdminLogin() {
 }
 
 const styles = StyleSheet.create({
-  scrollContainer: {
-    flexGrow: 1,
-    justifyContent: "center",
-  },
+  scrollContainer: { flexGrow: 1, justifyContent: "center" },
   container: {
     flex: 1,
     justifyContent: "center",
     padding: 24,
     backgroundColor: "#fff",
+    alignItems: "center", // center logo and title
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#774e94ff",
-    marginBottom: 32,
-    textAlign: "center",
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
-    fontSize: 16,
-    backgroundColor: "#fff",
-  },
-  passwordWrapper: {
-    position: "relative",
-    marginBottom: 16,
-  },
-  eyeButton: {
-    position: "absolute",
-    right: 10,
-    top: 10,
-    height: 36,
-    width: 36,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loginButton: {
-    backgroundColor: "#774e94ff",
-    padding: 14,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  loginText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
+  logo: { width: 120, height: 120, marginBottom: 24, borderRadius: 16 },
+  title: { fontSize: 28, fontWeight: "bold", color: "#774e94ff", marginBottom: 16, textAlign: "center" },
+  errorText: { color: "red", marginBottom: 12, textAlign: "center" },
+  input: { width: "100%", borderWidth: 1, borderColor: "#ccc", borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 16, backgroundColor: "#fff" },
+  passwordWrapper: { position: "relative", width: "100%", marginBottom: 16 },
+  eyeButton: { position: "absolute", right: 10, top: 10, height: 36, width: 36, justifyContent: "center", alignItems: "center" },
+  loginButton: { backgroundColor: "#774e94ff", padding: 14, borderRadius: 10, alignItems: "center", width: "100%" },
+  loginText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
 });

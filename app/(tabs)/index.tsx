@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -36,6 +37,7 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
   const [filterType, setFilterType] = useState<"all" | "title" | "author" | "isbn">("all");
+  const [searched, setSearched] = useState(false); // ✅ track if a search was done
 
   const router = useRouter();
   const inputRef = useRef<TextInput>(null);
@@ -51,11 +53,11 @@ export default function LandingPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Filter books based on search
-  useEffect(() => {
+  const handleSearch = () => {
     const trimmed = searchText.trim().toLowerCase();
     if (!trimmed) {
       setFilteredSections(sections);
+      setSearched(false);
       return;
     }
 
@@ -77,7 +79,16 @@ export default function LandingPage() {
       .filter((section) => section.books.length > 0);
 
     setFilteredSections(newSections);
-  }, [searchText, filterType, sections]);
+    setSearched(true);
+    Keyboard.dismiss();
+  };
+
+  const clearSearch = () => {
+    setSearchText("");
+    setFilteredSections(sections);
+    setSearched(false);
+    inputRef.current?.blur();
+  };
 
   if (loading) return <ActivityIndicator size="large" style={{ flex: 1 }} />;
 
@@ -85,8 +96,6 @@ export default function LandingPage() {
 
   const dismissSearch = () => {
     Keyboard.dismiss();
-    setSearchText("");
-    setFilteredSections(sections);
     inputRef.current?.blur();
   };
 
@@ -103,32 +112,54 @@ export default function LandingPage() {
             <Text style={styles.libraryName}>Philcst Opac Library</Text>
           </View>
 
-          {/* Temporary Admin Login Button */}
+          {/* Admin Login Button */}
           <TouchableOpacity
             style={styles.adminButton}
             onPress={() => router.push("/admin/login" as never)}
           >
-            <Text style={styles.adminButtonText}>login</Text>
+            <Text style={styles.adminButtonText}>Login</Text>
           </TouchableOpacity>
         </View>
 
         {/* Search Bar */}
         <View style={styles.searchContainer}>
-          <TextInput
-            ref={inputRef}
-            style={styles.searchInput}
-            placeholder={
-              filterType === "all"
-                ? "Search books..."
-                : `Search books by ${filterType}`
-            }
-            value={searchText}
-            onChangeText={setSearchText}
-          />
+          <View style={styles.searchWrapper}>
+            <TextInput
+              ref={inputRef}
+              style={styles.searchInput}
+              placeholder={
+                filterType === "all"
+                  ? "Search books..."
+                  : `Search books by ${filterType}`
+              }
+              value={searchText}
+              onChangeText={(text) => {
+                setSearchText(text);
+                if (!text) {
+                  setFilteredSections(sections);
+                  setSearched(false);
+                }
+              }}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
+            />
+            {searched ? (
+              <TouchableOpacity onPress={clearSearch} style={styles.searchIcon}>
+                <Ionicons name="close" size={20} color="#774e94ff" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity onPress={handleSearch} style={styles.searchIcon}>
+                <Ionicons name="search" size={20} color="#774e94ff" />
+              </TouchableOpacity>
+            )}
+          </View>
+
           <Picker
             selectedValue={filterType}
             style={styles.picker}
-            onValueChange={(value) => setFilterType(value)}
+            onValueChange={(value: "all" | "title" | "author" | "isbn") =>
+              setFilterType(value)
+            }
           >
             <Picker.Item label="All" value="all" />
             <Picker.Item label="Title" value="title" />
@@ -137,6 +168,7 @@ export default function LandingPage() {
           </Picker>
         </View>
 
+        {/* Book Sections */}
         {hasBooks ? (
           <FlatList
             data={filteredSections}
@@ -153,7 +185,7 @@ export default function LandingPage() {
                 </View>
 
                 <FlatList
-                  data={item.books.slice(0, 3)} // show 3 books
+                  data={item.books.slice(0, 3)}
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   keyExtractor={(book) => book.id.toString()}
@@ -186,7 +218,9 @@ export default function LandingPage() {
                               styles.status,
                               {
                                 color:
-                                  book.status === "Available" ? "green" : "red",
+                                  book.status === "Available"
+                                    ? "green"
+                                    : "red",
                               },
                             ]}
                           >
@@ -221,9 +255,9 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between", // space out logo and button
+    justifyContent: "space-between",
     padding: 20,
-    backgroundColor: "#fff",
+    backgroundColor: "#f0e6fa",
   },
   logo: {
     width: 40,
@@ -255,14 +289,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 10,
   },
-  searchInput: {
+  searchWrapper: {
     flex: 1,
+    position: "relative",
+  },
+  searchInput: {
     height: 40,
     backgroundColor: "#fff",
     paddingHorizontal: 12,
+    paddingRight: 35,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#ccc",
+  },
+  searchIcon: {
+    position: "absolute",
+    right: 10,
+    top: 10,
   },
   picker: {
     width: 120,
@@ -312,4 +355,3 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
 });
-//goods 
