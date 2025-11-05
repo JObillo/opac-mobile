@@ -12,6 +12,11 @@ import {
 } from "react-native";
 import api from "../../api/api";
 
+type BookCopy = {
+  accession_number: string;
+  status: string;
+};
+
 type Book = {
   id: number;
   title: string;
@@ -19,14 +24,15 @@ type Book = {
   isbn: string;
   publisher: string;
   publication_place?: string;
-  accession_number?: string;
   call_number?: string;
   book_copies?: number;
-  published_year?: string;
-  section?: { id: number; section_name: string };
+  year?: string;
+  section?: { id: number; name: string };
   dewey?: string;
+  subject?: string;
   book_cover?: string;
   status?: string;
+  copies?: BookCopy[];
 };
 
 export default function BookDetails() {
@@ -56,53 +62,62 @@ export default function BookDetails() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
-          {/* <Text style={styles.headerText}>back</Text> */}
         </View>
 
         {/* Book Cover */}
         <View style={styles.coverContainer}>
-        <Image
+          <Image
             source={{
-            uri: book.book_cover
+              uri: book.book_cover
                 ? book.book_cover.startsWith("http")
-                ? book.book_cover
-                : `http://192.168.0.104:8000${book.book_cover}`
+                  ? book.book_cover
+                  : `http://192.168.0.104:8000${book.book_cover}`
                 : "https://via.placeholder.com/200x300.png?text=No+Cover",
             }}
             style={styles.bookCover}
-        />
-        {/* Status below the cover */}
-        {book.status && (
-        <View style={styles.statusContainer}>
-            <Text
-            style={[
-                styles.statusText,
-                { color: book.status === "Available" ? "green" : "red" },
-            ]}
-            >
-            {book.status}
-            </Text>
+          />
+          {book.status && (
+            <View style={styles.statusContainer}>
+              <Text
+                style={[
+                  styles.statusText,
+                  { color: book.status === "Available" ? "green" : "red" },
+                ]}
+              >
+                {book.status}
+              </Text>
+            </View>
+          )}
         </View>
-        )}
-
-        </View>
-
 
         {/* Book Info */}
         <View style={styles.infoContainer}>
-          <Text style={styles.infoTitle}>Title: {book.title}</Text>
+          <Text style={styles.infoTitle}>{book.title}</Text>
           <Text style={styles.infoText}>Author: {book.author}</Text>
           <Text style={styles.infoText}>ISBN: {book.isbn}</Text>
           <Text style={styles.infoText}>Publisher: {book.publisher}</Text>
-          {book.publication_place && <Text style={styles.infoText}>Publication Place: {book.publication_place}</Text>}
-          {book.accession_number && <Text style={styles.infoText}>Accession Number: {book.accession_number}</Text>}
+          {book.publication_place && <Text style={styles.infoText}>Place of publication: {book.publication_place}</Text>}
           {book.call_number && <Text style={styles.infoText}>Call Number: {book.call_number}</Text>}
-          {/* {book.book_copies !== undefined && <Text style={styles.infoText}>Book Copies: {book.book_copies}</Text>} */}
-          {book.published_year && <Text style={styles.infoText}>Published Year: {book.published_year}</Text>}
-          {book.section && <Text style={styles.infoText}>Section: {book.section.section_name}</Text>}
-          {book.dewey && <Text style={styles.infoText}>Dewey: {book.dewey}</Text>}
-
+          {book.book_copies !== undefined && <Text style={styles.infoText}>Total Copies: {book.book_copies}</Text>}
+          {book.year && <Text style={styles.infoText}>Published Year: {book.year}</Text>}
+          {book.section && <Text style={styles.infoText}>Section: {book.section.name}</Text>}
+          {/* {book.dewey && <Text style={styles.infoText}>Dewey: {book.dewey}</Text>} */}
+          {book.subject && <Text style={styles.infoText}>Subject: {book.subject}</Text>}
         </View>
+
+        {/* Copies List */}
+        {book.copies && book.copies.length > 0 && (
+          <View style={styles.copiesContainer}>
+            <Text style={styles.copiesTitle}>Copies</Text>
+            {book.copies.map((copy) => (
+              <View key={copy.accession_number} style={styles.copyRow}>
+                <Text>Accession No: {copy.accession_number}</Text>
+                <Text style={{ color: copy.status === "Available" ? "green" : "red" }}>{copy.status}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
       </ScrollView>
     </>
   );
@@ -120,12 +135,6 @@ const styles = StyleSheet.create({
   backButton: {
     marginRight: 12,
   },
-  headerText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-    flexShrink: 1,
-  },
   coverContainer: {
     alignItems: "center",
     marginVertical: 20,
@@ -136,12 +145,24 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     resizeMode: "cover",
   },
+  statusContainer: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#ccc",
+    width: "80%",
+    alignSelf: "center",
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  statusText: {
+    fontWeight: "bold",
+    textAlign: "center",
+  },
   infoContainer: {
     paddingHorizontal: 16,
     paddingBottom: 30,
   },
   infoTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "bold",
     marginBottom: 8,
   },
@@ -149,18 +170,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 4,
   },
-
-statusContainer: {
-  borderBottomWidth: 1,
-  borderBottomColor: "#ccc",
-  width: "80%",      // line width
-  alignSelf: "center",
-  marginTop: 8,
-  marginBottom: 16,
-},
-statusText: {
-  fontWeight: "bold",
-  textAlign: "center",
-},
-
+  copiesContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 30,
+  },
+  copiesTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 8,
+  },
+  copyRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
 });

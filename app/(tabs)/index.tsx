@@ -21,6 +21,7 @@ type Book = {
   title: string;
   author: string;
   isbn: string;
+  subject: string;
   status: string;
   book_cover?: string;
 };
@@ -36,7 +37,7 @@ export default function LandingPage() {
   const [filteredSections, setFilteredSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
-  const [filterType, setFilterType] = useState<"all" | "title" | "author" | "isbn">("all");
+  const [filterType, setFilterType] = useState<"all" | "title" | "author" | "isbn" | "subject">("all");
   const [searched, setSearched] = useState(false); // ✅ track if a search was done
 
   const router = useRouter();
@@ -69,7 +70,8 @@ export default function LandingPage() {
             return (
               book.title.toLowerCase().includes(trimmed) ||
               book.author.toLowerCase().includes(trimmed) ||
-              (book.isbn?.toLowerCase().includes(trimmed) ?? false)
+              (book.isbn?.toLowerCase().includes(trimmed) ?? false) ||
+              book.subject.toLowerCase().includes(trimmed)
             );
           } else {
             return book[filterType]?.toLowerCase().includes(trimmed);
@@ -157,7 +159,7 @@ export default function LandingPage() {
           <Picker
             selectedValue={filterType}
             style={styles.picker}
-            onValueChange={(value: "all" | "title" | "author" | "isbn") =>
+            onValueChange={(value: "all" | "title" | "author" | "isbn" | "subject") =>
               setFilterType(value)
             }
           >
@@ -165,6 +167,7 @@ export default function LandingPage() {
             <Picker.Item label="Title" value="title" />
             <Picker.Item label="Author" value="author" />
             <Picker.Item label="ISBN" value="isbn" />
+            <Picker.Item label="Subject" value="subject" />
           </Picker>
         </View>
 

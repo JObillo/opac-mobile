@@ -23,6 +23,7 @@ type Book = {
   title: string;
   author: string;
   isbn: string;
+  subject: string;
   status: string;
   book_cover?: string;
 };
@@ -38,11 +39,14 @@ export default function AdminDashboard() {
   const [filteredSections, setFilteredSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
-  const [filterType, setFilterType] = useState<"all" | "title" | "author" | "isbn">("all");
+  const [filterType, setFilterType] = useState<"all" | "title" | "author" | "isbn" | "subject">("all");
+  const [searched, setSearched] = useState(false);
+  const [editMode, setEditMode] = useState(false);
 
   const router = useRouter();
   const inputRef = useRef<TextInput>(null);
 
+  // Fetch sections
   const fetchSections = async () => {
     setLoading(true);
     try {
@@ -61,37 +65,54 @@ export default function AdminDashboard() {
     fetchSections();
   }, []);
 
-  useEffect(() => {
-    const trimmed = searchText.trim().toLowerCase();
+  // Search handler
+  const handleSearch = () => {
+    const trimmed = searchText.trim();
     if (!trimmed) {
       setFilteredSections(sections);
+      setSearched(false);
       return;
     }
 
+    const q = trimmed.toLowerCase();
     const newSections = sections
       .map((section) => ({
         ...section,
         books: section.books.filter((book) => {
           if (filterType === "all") {
             return (
-              book.title.toLowerCase().includes(trimmed) ||
-              book.author.toLowerCase().includes(trimmed) ||
-              (book.isbn?.toLowerCase().includes(trimmed) ?? false)
+              book.title.toLowerCase().includes(q) ||
+              book.author.toLowerCase().includes(q) ||
+              (book.isbn?.toLowerCase().includes(q) ?? false) ||
+              book.subject.toLowerCase().includes(q)
             );
           } else {
-            return book[filterType]?.toLowerCase().includes(trimmed);
+            return book[filterType]?.toLowerCase().includes(q);
           }
         }),
       }))
       .filter((section) => section.books.length > 0);
 
     setFilteredSections(newSections);
-  }, [searchText, filterType, sections]);
+    setSearched(true);
+    Keyboard.dismiss();
+  };
+
+  const clearSearch = () => {
+    setSearchText("");
+    setFilteredSections(sections);
+    setSearched(false);
+    inputRef.current?.blur();
+  };
+
+  const dismissSearch = () => {
+    Keyboard.dismiss();
+    inputRef.current?.blur();
+  };
 
   const handleLogout = async () => {
     try {
       const token = await AsyncStorage.getItem("token");
-
       if (token) {
         await fetch("http://192.168.0.104:8000/api/logout", {
           method: "POST",
@@ -101,7 +122,6 @@ export default function AdminDashboard() {
           },
         });
       }
-
       await AsyncStorage.removeItem("token");
       Alert.alert("Logged Out", "You have been logged out successfully.");
       router.replace("/");
@@ -115,16 +135,8 @@ export default function AdminDashboard() {
 
   const hasBooks = filteredSections.some((section) => section.books.length > 0);
 
-  const dismissSearch = () => {
-    Keyboard.dismiss();
-    setSearchText("");
-    setFilteredSections(sections);
-    inputRef.current?.blur();
-  };
-
   return (
     <>
-      {/* Header */}
       <Stack.Screen
         options={{
           headerBackVisible: false,
@@ -136,7 +148,9 @@ export default function AdminDashboard() {
               />
               <View style={{ marginLeft: 10 }}>
                 <Text style={styles.libraryName}>Philcst Library</Text>
-                <Text style={styles.adminBadge}>ADMIN DASHBOARD</Text>
+                <Text style={styles.adminBadge}>
+                  {editMode ? "EDIT MODE" : "ADMIN DASHBOARD"}
+                </Text>
               </View>
             </View>
           ),
@@ -151,19 +165,31 @@ export default function AdminDashboard() {
         }}
       />
 
-      {/* Main Body */}
       <TouchableWithoutFeedback onPress={dismissSearch}>
         <View style={{ flex: 1, backgroundColor: "#f8f8f8" }}>
-
           {/* Search & Filter */}
           <View style={styles.searchContainer}>
-            <TextInput
-              ref={inputRef}
-              style={styles.searchInput}
-              placeholder={filterType === "all" ? "Search books..." : `Search by ${filterType}`}
-              value={searchText}
-              onChangeText={setSearchText}
-            />
+            <View style={styles.searchWrapper}>
+              <TextInput
+                ref={inputRef}
+                style={styles.searchInput}
+                placeholder={filterType === "all" ? "Search books..." : `Search by ${filterType}`}
+                value={searchText}
+                onChangeText={setSearchText}
+                onSubmitEditing={handleSearch}
+                returnKeyType="search"
+              />
+              {searched ? (
+                <TouchableOpacity onPress={clearSearch} style={styles.searchIcon}>
+                  <Ionicons name="close" size={20} color="#774e94ff" />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={handleSearch} style={styles.searchIcon}>
+                  <Ionicons name="search" size={20} color="#774e94ff" />
+                </TouchableOpacity>
+              )}
+            </View>
+
             <Picker
               selectedValue={filterType}
               style={styles.picker}
@@ -173,6 +199,7 @@ export default function AdminDashboard() {
               <Picker.Item label="Title" value="title" />
               <Picker.Item label="Author" value="author" />
               <Picker.Item label="ISBN" value="isbn" />
+              <Picker.Item label="Subject" value="subject" />
             </Picker>
           </View>
 
@@ -198,7 +225,9 @@ export default function AdminDashboard() {
                     renderItem={({ item: book }) => (
                       <TouchableOpacity
                         onPress={() =>
-                          router.push({ pathname: "/book/[id]", params: { id: book.id.toString() } })
+                          editMode
+                            ? router.push({ pathname: "/admin/edit-book/[id]", params: { id: book.id.toString() } })
+                            : router.push({ pathname: "/book/[id]", params: { id: book.id.toString() } })
                         }
                       >
                         <View style={styles.bookCard}>
@@ -216,12 +245,7 @@ export default function AdminDashboard() {
                             <Text numberOfLines={1} style={styles.bookTitle}>
                               {book.title}
                             </Text>
-                            <Text
-                              style={[
-                                styles.status,
-                                { color: book.status === "Available" ? "green" : "red" },
-                              ]}
-                            >
+                            <Text style={{ color: book.status === "Available" ? "green" : "red" }}>
                               {book.status}
                             </Text>
                           </View>
@@ -248,8 +272,11 @@ export default function AdminDashboard() {
               <Ionicons name="add" size={26} color="#774e94ff" />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.iconButton} onPress={() => router.push("/admin/homepage")}>
-              <Ionicons name="create-outline" size={26} color="#774e94ff" />
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => setEditMode((prev) => !prev)}
+            >
+              <Ionicons name="create-outline" size={26} color={editMode ? "green" : "#774e94ff"} />
             </TouchableOpacity>
           </View>
         </View>
@@ -266,11 +293,10 @@ const styles = StyleSheet.create({
   adminBadge: { fontSize: 12, color: "#774e94ff", fontWeight: "bold", textTransform: "uppercase" },
   logoutButton: { backgroundColor: "#774e94ff", paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, marginRight: 10 },
   logoutText: { color: "#fff", fontWeight: "bold", fontSize: 14 },
-  adminActions: { flexDirection: "row", justifyContent: "flex-start", marginVertical: 12, paddingLeft: 10 },
-  adminButton: { backgroundColor: "#774e94ff", padding: 12, borderRadius: 8, flexDirection: "row", alignItems: "center" },
-  adminButtonText: { color: "#fff", fontWeight: "bold", marginLeft: 6 },
   searchContainer: { flexDirection: "row", alignItems: "center", padding: 10 },
-  searchInput: { flex: 1, height: 40, backgroundColor: "#fff", paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: "#ccc" },
+  searchWrapper: { flex: 1, position: "relative" },
+  searchInput: { height: 40, backgroundColor: "#fff", paddingHorizontal: 12, paddingRight: 35, borderRadius: 8, borderWidth: 1, borderColor: "#ccc" },
+  searchIcon: { position: "absolute", right: 10, top: 10 },
   picker: { width: 120, marginLeft: 8 },
   sectionContainer: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#ccc" },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
@@ -280,7 +306,6 @@ const styles = StyleSheet.create({
   bookCover: { width: 120, height: 160, borderRadius: 8, marginBottom: 6 },
   bookInfo: { marginTop: 4 },
   bookTitle: { fontSize: 15, fontWeight: "bold", marginBottom: 4 },
-  status: { fontWeight: "500" },
   bottomBar: { flexDirection: "row", justifyContent: "space-around", alignItems: "center", height: 70, borderTopWidth: 1, borderTopColor: "#ddd", backgroundColor: "#fff" },
   iconButton: { flex: 1, alignItems: "center" },
   noBooksContainer: { flex: 1, justifyContent: "flex-start", alignItems: "center", marginTop: 80 },

@@ -35,6 +35,7 @@ const formatISBN = (value: string) => {
 export default function AddBook() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [fetchingBook, setFetchingBook] = useState(false); // new loading state
   const [sections, setSections] = useState<Section[]>([]);
   const [deweys, setDeweys] = useState<Dewey[]>([]);
   const [token, setToken] = useState<string>("");
@@ -137,14 +138,23 @@ export default function AddBook() {
     if (errors.date_purchase) setErrors((prev) => ({ ...prev, date_purchase: "" }));
   };
 
+  // Updated fetch function
   const fetchBookByISBN = async (isbn: string) => {
     const cleanIsbn = isbn.replace(/\D/g, "");
-    if (cleanIsbn.length < 10) return Alert.alert("Error", "Please enter a valid ISBN.");
+    if (cleanIsbn.length < 10) return Alert.alert("Oops!", "Please enter a valid ISBN.");
 
     try {
+      setFetchingBook(true);
+
       const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
       const data = await response.json();
-      if (!data.items || data.items.length === 0) return Alert.alert("Error", "No book found for this ISBN.");
+
+      if (!data.items || data.items.length === 0) {
+        return Alert.alert(
+          "Not Found",
+          "Hmm… we couldn't find a book with that ISBN. Try checking the number or adding the book manually."
+        );
+      }
 
       const info = data.items[0].volumeInfo;
 
@@ -161,7 +171,9 @@ export default function AddBook() {
 
       Alert.alert("Success", "Book info loaded from Google Books!");
     } catch {
-      Alert.alert("Error", "Failed to fetch book info.");
+      Alert.alert("Error", "Something went wrong while fetching the book. Please try again.");
+    } finally {
+      setFetchingBook(false);
     }
   };
 
@@ -198,10 +210,9 @@ export default function AddBook() {
       if (form.book_cover) {
         let uri = form.book_cover;
 
-        // If it's a remote URL, download it first
         if (uri.startsWith("http")) {
-            const fileUri = (FileSystem as any).cacheDirectory + "cover.jpg";
-            await FileSystem.downloadAsync(uri, fileUri);
+          const fileUri = (FileSystem as any).cacheDirectory + "cover.jpg";
+          await FileSystem.downloadAsync(uri, fileUri);
           uri = fileUri;
         }
 
@@ -209,7 +220,6 @@ export default function AddBook() {
         data.append("book_cover", { uri, name: filename, type: "image/jpeg" } as any);
       }
 
-      // Append other fields
       Object.keys(form).forEach((key) => {
         const value = form[key as keyof typeof form];
         if (key === "accession_numbers") {
@@ -250,18 +260,16 @@ export default function AddBook() {
   return (
     <>
       <Stack.Screen
-          options={{
-            headerStyle: {
-              backgroundColor: "#774e94ff",
-            },
-            headerTitle: () => (
-              <View style={{ flex: 1, alignItems: "flex-end", paddingRight: 10 }}>
-                <Text style={{ fontWeight: "bold", fontSize: 18, color: "#ffffffff" }}>Add New Book</Text>
-              </View>
-            ),
-            headerTintColor: "#ffffffff",
-          }}
-        />
+        options={{
+          headerStyle: { backgroundColor: "#774e94ff" },
+          headerTitle: () => (
+            <View style={{ flex: 1, alignItems: "flex-end", paddingRight: 10 }}>
+              <Text style={{ fontWeight: "bold", fontSize: 18, color: "#fff" }}>Add New Book</Text>
+            </View>
+          ),
+          headerTintColor: "#fff",
+        }}
+      />
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}>
         <KeyboardAwareScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} enableOnAndroid={true}>
@@ -278,8 +286,12 @@ export default function AddBook() {
               placeholder="111-1-11111-111-1"
               keyboardType="numeric"
             />
-            <TouchableOpacity style={{ marginLeft: 8, backgroundColor: "#774e94ff", paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6 }} onPress={() => fetchBookByISBN(form.isbn)}>
-              <Text style={{ color: "#fff" }}>Fetch</Text>
+            <TouchableOpacity
+              style={{ marginLeft: 8, backgroundColor: "#774e94ff", paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, justifyContent: "center", alignItems: "center" }}
+              onPress={() => fetchBookByISBN(form.isbn)}
+              disabled={fetchingBook}
+            >
+              <Text style={{ color: "#fff" }}>{fetchingBook ? "Loading…" : "Fetch"}</Text>
             </TouchableOpacity>
           </View>
 
