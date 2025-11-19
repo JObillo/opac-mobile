@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 import { useRouter } from "expo-router";
+import Fuse from "fuse.js";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -53,44 +54,63 @@ export default function LandingPage() {
       .catch((err) => console.error("Axios error:", err.message))
       .finally(() => setLoading(false));
   }, []);
+  
+const handleSearch = () => {
+  const trimmed = searchText.trim();
 
-  const handleSearch = () => {
-    const trimmed = searchText.trim().toLowerCase();
-    if (!trimmed) {
-      setFilteredSections(sections);
-      setSearched(false);
-      return;
-    }
-
-    const newSections = sections
-      .map((section) => ({
-        ...section,
-        books: section.books.filter((book) => {
-          if (filterType === "all") {
-            return (
-              book.title.toLowerCase().includes(trimmed) ||
-              book.author.toLowerCase().includes(trimmed) ||
-              (book.isbn?.toLowerCase().includes(trimmed) ?? false) ||
-              book.subject.toLowerCase().includes(trimmed)
-            );
-          } else {
-            return book[filterType]?.toLowerCase().includes(trimmed);
-          }
-        }),
-      }))
-      .filter((section) => section.books.length > 0);
-
-    setFilteredSections(newSections);
-    setSearched(true);
-    Keyboard.dismiss();
-  };
-
-  const clearSearch = () => {
-    setSearchText("");
+  if (!trimmed) {
     setFilteredSections(sections);
     setSearched(false);
-    inputRef.current?.blur();
-  };
+    return;
+  }
+
+  // Flatten all books including section data
+  const allBooks = sections.flatMap((section) =>
+    section.books.map((book) => ({
+      ...book,
+      section_id: section.id,
+      section_name: section.section_name,
+    }))
+  );
+
+  // Create Fuse instance
+  const fuse = new Fuse(allBooks, {
+    keys: ["title", "author", "isbn", "subject"],
+    threshold: 0.4,
+  });
+
+  // Run fuzzy search (type-safe)
+  const results = fuse.search(trimmed).map((result) => result.item);
+
+  // Group results back into sections
+  const grouped: Record<number, Section> = {};
+
+  results.forEach((book) => {
+    if (!grouped[book.section_id]) {
+      grouped[book.section_id] = {
+        id: book.section_id,
+        section_name: book.section_name,
+        books: [],
+      };
+    }
+    grouped[book.section_id].books.push(book);
+  });
+
+  const finalSections: Section[] = Object.values(grouped);
+
+  setFilteredSections(finalSections);
+  setSearched(true);
+  Keyboard.dismiss();
+};
+
+
+const clearSearch = () => {
+  setSearchText("");
+  setFilteredSections(sections);
+  setSearched(false);
+  inputRef.current?.blur();
+};
+
 
   if (loading) return <ActivityIndicator size="large" style={{ flex: 1 }} />;
 

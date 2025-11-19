@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import Fuse from "fuse.js";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,6 +17,13 @@ import {
 } from "react-native";
 import api from "../../api/api";
 
+
+type FuseMatch = {
+  indices: number[][];
+  value?: string;
+  key?: string;
+};
+
 type Book = {
   id: number;
   title: string;
@@ -25,6 +33,7 @@ type Book = {
   subject: string;
   status?: string;
   book_cover?: string;
+  _matches?: Partial<Record<keyof Book, FuseMatch[]>>;
 };
 
 export default function SectionPage() {
@@ -66,21 +75,30 @@ export default function SectionPage() {
       return;
     }
 
-    const q = trimmedText.toLowerCase();
-    const newBooks = books.filter((book) => {
-      if (filterType === "all") {
-        return (
-          book.title.toLowerCase().includes(q) ||
-          book.author.toLowerCase().includes(q) ||
-          (book.isbn?.toLowerCase().includes(q) ?? false) ||
-          book.subject.toLowerCase().includes(q)
-        );
-      } else {
-        return book[filterType]?.toLowerCase().includes(q);
-      }
+    // Fuzzy search with Fuse.js
+    const fuse = new Fuse(books, {
+      keys: ["title", "author", "isbn", "subject"],
+      threshold: 0.4,
+      includeMatches: true,
     });
 
-    setFilteredBooks(newBooks);
+    const results = fuse.search(trimmedText);
+
+    // Map results and highlight matches
+    const highlightedBooks = results.map((result) => {
+      const book = result.item;
+      const matches: Partial<Record<keyof Book, FuseMatch[]>> = {};
+      if (result.matches) {
+        result.matches.forEach((m) => {
+          if (m.key) {
+            matches[m.key as keyof Book] = [{ indices: [...m.indices] as number[][] }];
+          }
+        });
+      }
+      return { ...book, _matches: matches };
+    });
+
+    setFilteredBooks(highlightedBooks);
     setCurrentPage(1);
     setSearched(true);
     Keyboard.dismiss();
@@ -104,6 +122,39 @@ export default function SectionPage() {
   const currentBooks = filteredBooks.slice(indexOfFirstBook, indexOfLastBook);
   const totalPages = Math.ceil(filteredBooks.length / booksPerPage);
 
+  const renderHighlightedText = (text: string, matches?: { indices: number[][] }) => {
+    if (!matches) return <Text>{text}</Text>;
+
+    const elements: any[] = [];
+    let lastIndex = 0;
+
+    matches.indices.forEach(([start, end], i) => {
+      if (start > lastIndex) {
+        elements.push(<Text key={`text-${i}-${lastIndex}`}>{text.slice(lastIndex, start)}</Text>);
+      }
+      elements.push(
+    <Text
+      key={`highlight-${i}`}
+      style={{
+        fontWeight: "bold",
+        backgroundColor: "#ffeaa7", 
+        color: "#2d3436",
+        borderRadius: 2,
+      }}
+    >
+      {text.slice(start, end + 1)}
+    </Text>
+      );
+      lastIndex = end + 1;
+    });
+
+    if (lastIndex < text.length) {
+      elements.push(<Text key={`text-end`}>{text.slice(lastIndex)}</Text>);
+    }
+
+    return <Text>{elements}</Text>;
+  };
+
   if (loading) return <ActivityIndicator size="large" style={{ flex: 1 }} />;
 
   const renderPagination = () => {
@@ -113,10 +164,7 @@ export default function SectionPage() {
     const pages = [];
     let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
     let endPage = Math.min(totalPages, startPage + maxButtons - 1);
-
-    if (endPage - startPage + 1 < maxButtons) {
-      startPage = Math.max(1, endPage - maxButtons + 1);
-    }
+    if (endPage - startPage + 1 < maxButtons) startPage = Math.max(1, endPage - maxButtons + 1);
 
     for (let i = startPage; i <= endPage; i++) {
       pages.push(
@@ -124,42 +172,22 @@ export default function SectionPage() {
           key={i}
           onPress={() => setCurrentPage(i)}
           disabled={i === currentPage}
-          style={[
-            styles.pageButton,
-            i === currentPage && styles.activePageButton,
-          ]}
+          style={[styles.pageButton, i === currentPage && styles.activePageButton]}
         >
-          <Text
-            style={[
-              styles.pageText,
-              i === currentPage && styles.activePageText,
-            ]}
-          >
-            {i}
-          </Text>
+          <Text style={[styles.pageText, i === currentPage && styles.activePageText]}>{i}</Text>
         </TouchableOpacity>
       );
     }
 
     return (
       <View style={styles.paginationContainer}>
-        <TouchableOpacity
-          disabled={currentPage === 1}
-          onPress={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-        >
-          <Ionicons
-            name="chevron-back-circle"
-            size={36}
-            color={currentPage === 1 ? "#ccc" : "#774e94ff"}
-          />
+        <TouchableOpacity disabled={currentPage === 1} onPress={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}>
+          <Ionicons name="chevron-back-circle" size={36} color={currentPage === 1 ? "#ccc" : "#774e94ff"} />
         </TouchableOpacity>
 
         {startPage > 1 && (
           <>
-            <TouchableOpacity
-              onPress={() => setCurrentPage(1)}
-              style={styles.pageButton}
-            >
+            <TouchableOpacity onPress={() => setCurrentPage(1)} style={styles.pageButton}>
               <Text style={styles.pageText}>1</Text>
             </TouchableOpacity>
             {startPage > 2 && <Text style={styles.ellipsis}>...</Text>}
@@ -170,13 +198,8 @@ export default function SectionPage() {
 
         {endPage < totalPages && (
           <>
-            {endPage < totalPages - 1 && (
-              <Text style={styles.ellipsis}>...</Text>
-            )}
-            <TouchableOpacity
-              onPress={() => setCurrentPage(totalPages)}
-              style={styles.pageButton}
-            >
+            {endPage < totalPages - 1 && <Text style={styles.ellipsis}>...</Text>}
+            <TouchableOpacity onPress={() => setCurrentPage(totalPages)} style={styles.pageButton}>
               <Text style={styles.pageText}>{totalPages}</Text>
             </TouchableOpacity>
           </>
@@ -184,9 +207,7 @@ export default function SectionPage() {
 
         <TouchableOpacity
           disabled={currentPage === totalPages}
-          onPress={() =>
-            setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-          }
+          onPress={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
         >
           <Ionicons
             name="chevron-forward-circle"
@@ -217,11 +238,7 @@ export default function SectionPage() {
             <TextInput
               ref={inputRef}
               style={styles.searchInput}
-              placeholder={
-                filterType === "all"
-                  ? "Search books..."
-                  : `Search by ${filterType}`
-              }
+              placeholder={filterType === "all" ? "Search books..." : `Search by ${filterType}`}
               value={searchText}
               onChangeText={(text) => {
                 setSearchText(text);
@@ -244,9 +261,9 @@ export default function SectionPage() {
           <Picker
             selectedValue={filterType}
             style={styles.picker}
-            onValueChange={(
-              value: "all" | "title" | "author" | "isbn" | "subject"
-            ) => setFilterType(value)}
+            onValueChange={(value: "all" | "title" | "author" | "isbn" | "subject") =>
+              setFilterType(value)
+            }
           >
             <Picker.Item label="All" value="all" />
             <Picker.Item label="Title" value="title" />
@@ -282,18 +299,12 @@ export default function SectionPage() {
                     style={styles.bookCover}
                   />
                   <View style={styles.bookInfo}>
-                    <Text style={styles.title}>{item.title}</Text>
-                    <Text>Author: {item.author}</Text>
+                    {renderHighlightedText(item.title, item._matches?.title?.[0])}
+                    {renderHighlightedText(item.author, item._matches?.author?.[0])}
                     <Text>ISBN: {item.isbn}</Text>
                     <Text>Publisher: {item.publisher}</Text>
-                    <Text>Subject: {item.subject}</Text>
                     {item.status && (
-                      <Text
-                        style={{
-                          color: item.status === "Available" ? "green" : "red",
-                          fontWeight: "bold",
-                        }}
-                      >
+                      <Text style={{ color: item.status === "Available" ? "green" : "red", fontWeight: "bold" }}>
                         {item.status}
                       </Text>
                     )}

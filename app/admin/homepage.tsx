@@ -114,7 +114,7 @@ export default function AdminDashboard() {
     try {
       const token = await AsyncStorage.getItem("token");
       if (token) {
-        await fetch("http://192.168.0.104:8000/api/logout", {
+        await fetch("http://192.168.12.16:8000/api/logout", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -143,7 +143,7 @@ export default function AdminDashboard() {
           headerTitle: () => (
             <View style={styles.header}>
               <Image
-                source={{ uri: "http://192.168.0.104:8000/philcstlogo.png" }}
+                source={{ uri: "http://192.168.12.16:8000/philcstlogo.png" }}
                 style={styles.logo}
               />
               <View style={{ marginLeft: 10 }}>
@@ -236,7 +236,7 @@ export default function AdminDashboard() {
                               uri: book.book_cover
                                 ? book.book_cover.startsWith("http")
                                   ? book.book_cover
-                                  : `http://192.168.0.104:8000${book.book_cover}`
+                                  : `http://192.168.12.16:8000${book.book_cover}`
                                 : "https://via.placeholder.com/120x160.png?text=No+Cover",
                             }}
                             style={styles.bookCover}
