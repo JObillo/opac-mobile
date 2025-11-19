@@ -1,3 +1,4 @@
+import { Colors } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 import { useRouter } from "expo-router";
@@ -39,7 +40,7 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
   const [filterType, setFilterType] = useState<"all" | "title" | "author" | "isbn" | "subject">("all");
-  const [searched, setSearched] = useState(false); // ✅ track if a search was done
+  const [searched, setSearched] = useState(false);
 
   const router = useRouter();
   const inputRef = useRef<TextInput>(null);
@@ -54,63 +55,55 @@ export default function LandingPage() {
       .catch((err) => console.error("Axios error:", err.message))
       .finally(() => setLoading(false));
   }, []);
-  
-const handleSearch = () => {
-  const trimmed = searchText.trim();
 
-  if (!trimmed) {
+  const handleSearch = () => {
+    const trimmed = searchText.trim();
+
+    if (!trimmed) {
+      setFilteredSections(sections);
+      setSearched(false);
+      return;
+    }
+
+    const allBooks = sections.flatMap((section) =>
+      section.books.map((book) => ({
+        ...book,
+        section_id: section.id,
+        section_name: section.section_name,
+      }))
+    );
+
+    const fuse = new Fuse(allBooks, {
+      keys: ["title", "author", "isbn", "subject"],
+      threshold: 0.4,
+    });
+
+    const results = fuse.search(trimmed).map((result) => result.item);
+
+    const grouped: Record<number, Section> = {};
+
+    results.forEach((book) => {
+      if (!grouped[book.section_id]) {
+        grouped[book.section_id] = {
+          id: book.section_id,
+          section_name: book.section_name,
+          books: [],
+        };
+      }
+      grouped[book.section_id].books.push(book);
+    });
+
+    setFilteredSections(Object.values(grouped));
+    setSearched(true);
+    Keyboard.dismiss();
+  };
+
+  const clearSearch = () => {
+    setSearchText("");
     setFilteredSections(sections);
     setSearched(false);
-    return;
-  }
-
-  // Flatten all books including section data
-  const allBooks = sections.flatMap((section) =>
-    section.books.map((book) => ({
-      ...book,
-      section_id: section.id,
-      section_name: section.section_name,
-    }))
-  );
-
-  // Create Fuse instance
-  const fuse = new Fuse(allBooks, {
-    keys: ["title", "author", "isbn", "subject"],
-    threshold: 0.4,
-  });
-
-  // Run fuzzy search (type-safe)
-  const results = fuse.search(trimmed).map((result) => result.item);
-
-  // Group results back into sections
-  const grouped: Record<number, Section> = {};
-
-  results.forEach((book) => {
-    if (!grouped[book.section_id]) {
-      grouped[book.section_id] = {
-        id: book.section_id,
-        section_name: book.section_name,
-        books: [],
-      };
-    }
-    grouped[book.section_id].books.push(book);
-  });
-
-  const finalSections: Section[] = Object.values(grouped);
-
-  setFilteredSections(finalSections);
-  setSearched(true);
-  Keyboard.dismiss();
-};
-
-
-const clearSearch = () => {
-  setSearchText("");
-  setFilteredSections(sections);
-  setSearched(false);
-  inputRef.current?.blur();
-};
-
+    inputRef.current?.blur();
+  };
 
   if (loading) return <ActivityIndicator size="large" style={{ flex: 1 }} />;
 
@@ -123,20 +116,21 @@ const clearSearch = () => {
 
   return (
     <TouchableWithoutFeedback onPress={dismissSearch}>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: Colors.background }}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { backgroundColor: "#f0e6fa" }]}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Image
               source={{ uri: "http://192.168.0.104:8000/philcstlogo.png" }}
               style={styles.logo}
             />
-            <Text style={styles.libraryName}>Philcst Opac Library</Text>
+            <Text style={[styles.libraryName, { color: Colors.tint }]}>
+              Philcst Opac Library
+            </Text>
           </View>
 
-          {/* Admin Login Button */}
           <TouchableOpacity
-            style={styles.adminButton}
+            style={[styles.adminButton, { backgroundColor: Colors.tint }]}
             onPress={() => router.push("/admin/login" as never)}
           >
             <Text style={styles.adminButtonText}>Login</Text>
@@ -167,11 +161,11 @@ const clearSearch = () => {
             />
             {searched ? (
               <TouchableOpacity onPress={clearSearch} style={styles.searchIcon}>
-                <Ionicons name="close" size={20} color="#774e94ff" />
+                <Ionicons name="close" size={20} color={Colors.tint} />
               </TouchableOpacity>
             ) : (
               <TouchableOpacity onPress={handleSearch} style={styles.searchIcon}>
-                <Ionicons name="search" size={20} color="#774e94ff" />
+                <Ionicons name="search" size={20} color={Colors.tint} />
               </TouchableOpacity>
             )}
           </View>
@@ -199,7 +193,9 @@ const clearSearch = () => {
             renderItem={({ item }) => (
               <View style={styles.sectionContainer}>
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>{item.section_name}</Text>
+                  <Text style={[styles.sectionTitle, { color: Colors.text }]}>
+                    {item.section_name}
+                  </Text>
                   <TouchableOpacity
                     onPress={() => router.push(`/section/${item.id}`)}
                   >
@@ -233,18 +229,13 @@ const clearSearch = () => {
                           style={styles.bookCover}
                         />
                         <View style={styles.bookInfo}>
-                          <Text numberOfLines={1} style={styles.bookTitle}>
+                          <Text numberOfLines={1} style={[styles.bookTitle, { color: Colors.text }]}>
                             {book.title}
                           </Text>
                           <Text
                             style={[
                               styles.status,
-                              {
-                                color:
-                                  book.status === "Available"
-                                    ? "green"
-                                    : "red",
-                              },
+                              { color: book.status === "Available" ? "green" : "red" },
                             ]}
                           >
                             {book.status}
@@ -280,7 +271,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     padding: 20,
-    backgroundColor: "#f0e6fa",
   },
   logo: {
     width: 40,
@@ -289,14 +279,12 @@ const styles = StyleSheet.create({
     marginTop: 30,
   },
   libraryName: {
-    color: "#774e94ff",
     fontSize: 20,
     fontWeight: "bold",
     marginLeft: 12,
     marginTop: 30,
   },
   adminButton: {
-    backgroundColor: "#774e94ff",
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 8,
